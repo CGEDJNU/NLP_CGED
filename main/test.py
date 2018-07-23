@@ -6,14 +6,14 @@ from sklearn.metrics import classification_report,accuracy_score
 
 EMBEDDING_DIM = 5
 HIDDEN_DIM = 4  
-word_to_ix_path = 'word_to_ix.pkl'
-tag_to_ix_path = 'tag_to_ix.pkl'
+word_to_ix_path = '../data/word_to_ix.pkl'
+tag_to_ix_path = '../data/tag_to_ix.pkl'
 
 START_TAG = '<START>'
 STOP_TAG = '<STOP>'
 
-model_dir = './models/'
-model_path = model_dir+'295-2018-07-22-22-08-51-model.pkl'
+model_dir = '../data/models/0_5_4_0.2/'
+model_path = model_dir+'90-2018-07-22-02-19-20-model.pkl'
 test_data_path = '../data/CGED-Test-2016/test_CGED2016.txt'
 
 test_data = get_training_data(test_data_path)

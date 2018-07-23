@@ -287,15 +287,19 @@ if __name__ == '__main__':
         model_dir = '../data/models/'+experiment_name
         if not os.path.exists(model_dir):
             os.mkdir(model_dir)
-        # load word dict
+        # Load word dict
         word_to_ix, tag_to_ix = load_word_tag_ix(word_to_ix_path, tag_to_ix_path)
         
-        # training data
+        # Training data
         training_data = get_training_data(train_data_path)
-        # get subset of training data to verify whether work or not
+        # Get subset of training data to verify whether work or not
         training_data = training_data[:int( len(training_data)*ratio )]
         
-        # create model
+        # Val data
+        
+        
+        
+        # Create model
         model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
 
         #if torch.cuda.is_available():
@@ -317,7 +321,7 @@ if __name__ == '__main__':
             
             sample_num = len(training_data)
             epoch_loss = torch.autograd.Variable( torch.FloatTensor([0.0]) )
-            
+            # Training loss            
             for sentence, tags in tqdm (training_data):
                 # Step 1. Remember that Pytorch accumulates gradients.
                 # We need to clear them out before each instance
@@ -343,10 +347,11 @@ if __name__ == '__main__':
             
             avg_epoch_loss = epoch_loss.data[0] / sample_num
             vis.plot('logloss', avg_epoch_loss)
-
+            # Validation loss
+                        
             # Save model
             if epoch % model_save_interval == 0:
-                model_name = str(epoch)+'-'+time.strftime('%Y-%m-%d-%H-%M-%S',time.localtime(time.time()))+'-model.pkl'
+                model_name = str(epoch)+'-model.pkl'
                 model_path = model_dir+model_name
                 torch.save(model, model_path)
 
