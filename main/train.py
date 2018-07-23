@@ -262,7 +262,7 @@ class BiLSTM_CRF(nn.Module):
 
 if __name__ == '__main__':
         # Visualize
-        vis = Visualizer(env='lstm-crf')
+        vis = Visualizer(env='main')
 
         # Run training
         EMBEDDING_DIM = 10
@@ -272,8 +272,9 @@ if __name__ == '__main__':
         epoch_num = 300
         model_save_interval = 5
         
-        # ratio of training data to use
-        ratio = 0.2
+        # Ratio of data to use
+        train_ratio = 0.8
+        val_ratio = 0.5
         
         train_data_path = '../data/CRF-input/train_CGED2016.txt'
         test_data_path = '../data/CGED-Test-2016/test_CGED2016.txt'
@@ -283,7 +284,7 @@ if __name__ == '__main__':
         
         #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_to_ix_path)
         experiment_num = 1
-        experiment_name = str(experiment_num)+'_'+str(EMBEDDING_DIM)+'_'+str(HIDDEN_DIM)+'_'+str(ratio)+'/'
+        experiment_name = str(experiment_num)+'_'+str(EMBEDDING_DIM)+'_'+str(HIDDEN_DIM)+'_'+str(train_ratio)+'/'
         model_dir = '../data/models/'+experiment_name
         if not os.path.exists(model_dir):
             os.mkdir(model_dir)
@@ -293,11 +294,11 @@ if __name__ == '__main__':
         # Training data
         training_data = get_training_data(train_data_path)
         # Get subset of training data to verify whether work or not
-        training_data = training_data[:int( len(training_data)*ratio )]
+        training_data = training_data[:int( len(training_data) * train_ratio )]
         
         # Val data
-        
-        
+        val_data = get_training_data(test_data_path) 
+        val_data = val_data[:int( len(val_data) * val_ratio )]
         
         # Create model
         model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
@@ -319,8 +320,8 @@ if __name__ == '__main__':
         # Make sure prepare_sequence from earlier in the LSTM section is loaded
         for epoch in tqdm ( range(epoch_num) ):  # again, normally you would NOT do 300 epochs, it is toy data
             
-            sample_num = len(training_data)
-            epoch_loss = torch.autograd.Variable( torch.FloatTensor([0.0]) )
+            sample_train_num = len(training_data)
+            epoch_train_loss = torch.autograd.Variable( torch.FloatTensor([0.0]) )
             # Training loss            
             for sentence, tags in tqdm (training_data):
                 # Step 1. Remember that Pytorch accumulates gradients.
@@ -339,16 +340,26 @@ if __name__ == '__main__':
                 #    targets = targets.cuda()
                 
                 neg_log_likelihood = model.neg_log_likelihood(sentence_in, targets)
-                epoch_loss += neg_log_likelihood
+                epoch_train_loss += neg_log_likelihood
                 # Step 4. Compute the loss, gradients, and update the parameters by
                 # calling optimizer.step()
                 neg_log_likelihood.backward()
                 optimizer.step()
             
-            avg_epoch_loss = epoch_loss.data[0] / sample_num
-            vis.plot('logloss', avg_epoch_loss)
+            avg_epoch_train_loss = epoch_train_loss.data[0] / sample_train_num
+            vis.plot('train_logloss', avg_epoch_train_loss)
+            
             # Validation loss
-                        
+            sample_val_num = len(val_data)
+            epoch_val_loss = torch.autograd.Variable( torch.FloatTensor([0.0]) )
+            for sentence, tags in tqdm(val_data):
+                sentence_in = prepare_sequence(sentence, word_to_ix)
+                targets = torch.LongTensor([tag_to_ix[t] for t in tags])
+                neg_log_likelihood = model.neg_log_likelihood(sentence_in, targets)
+                epoch_val_loss += neg_log_likelihood
+            avg_epoch_val_loss = epoch_val_loss.data[0] / sample_val_num
+            vis.plot('val_logloss', avg_epoch_val_loss)
+            
             # Save model
             if epoch % model_save_interval == 0:
                 model_name = str(epoch)+'-model.pkl'
