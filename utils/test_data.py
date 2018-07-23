@@ -38,7 +38,7 @@ postagger.load(pos_model_path)  # 加载标注模型
 #parser = Parser() # 初始化实例
 #parser.load(par_model_path)  # 加载模型
 
-f = open("CGED16_Input.txt",'w')
+f = open("../data/CGED16_Input.txt",'w')
 
 for i in range(len(input)):
     flag=0

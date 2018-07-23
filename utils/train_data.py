@@ -103,7 +103,7 @@ class DataHandler( xml.sax.ContentHandler ):
          self.ERROR= content
 
 
-f = open('./output.txt','w')
+f = open('../data/test_data_output.txt','w')
 
 if __name__ == '__main__':
     #导入模型
