@@ -9,8 +9,11 @@ import torch.nn as nn
 import torch.optim as optim
 from utils.visualize import *
 
-#os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 torch.manual_seed(1)
+
+CUDA_VALID = torch.cuda.is_available()
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+CUDA_VALID = 1
 
 
 def to_scalar(var):
@@ -159,7 +162,8 @@ class BiLSTM_CRF(nn.Module):
 
         # Wrap in a variable so that we will get automatic backprop
         forward_var = autograd.Variable(init_alphas)
-
+        if CUDA_VALID:
+            forward_var = forward_var.cuda()
         # Iterate through the sentence
         for feat in feats:
             alphas_t = []  # The forward variables at this timestep
@@ -185,6 +189,8 @@ class BiLSTM_CRF(nn.Module):
     def _get_lstm_features(self, sentence):
         self.hidden = self.init_hidden()
         embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
+        if CUDA_VALID:
+            self.hidden = tuple([elem.cuda() for elem in self.hidden])# Default is not cuda
         lstm_out, self.hidden = self.lstm(embeds, self.hidden)
         lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
         lstm_feats = self.hidden2tag(lstm_out)
@@ -192,15 +198,23 @@ class BiLSTM_CRF(nn.Module):
 
     def _score_sentence(self, feats, tags):
         # Gives the score of a provided tag sequence
-        score = autograd.Variable(torch.Tensor([0]))
-        tags = torch.cat([torch.LongTensor([self.tag_to_ix[START_TAG]]), tags])
+        
+        if CUDA_VALID:
+            tags = torch.cat([torch.LongTensor([self.tag_to_ix[START_TAG]]).cuda(), tags])
+            score = autograd.Variable(torch.Tensor([0])).cuda()
+        else:
+            score = autograd.Variable(torch.Tensor([0]))
+            tags = torch.cat([torch.LongTensor([self.tag_to_ix[START_TAG]]), tags])
+            
         for i, feat in enumerate(feats):
             score = score + \
                 self.transitions[tags[i + 1], tags[i]] + feat[tags[i + 1]]
         score = score + self.transitions[self.tag_to_ix[STOP_TAG], tags[-1]]
         return score
 
-    def _viterbi_decode(self, feats):
+    def _viterbi_decode(self, feats):   
+        # Move feats from GPU to CPU
+        feats = feats.cpu()
         backpointers = []
 
         # Initialize the viterbi variables in log space
@@ -219,7 +233,14 @@ class BiLSTM_CRF(nn.Module):
                 # from tag i to next_tag.
                 # We don't include the emission scores here because the max
                 # does not depend on them (we add them in below)
-                next_tag_var = forward_var + self.transitions[next_tag]
+                
+                
+                # align data
+                if CUDA_VALID:
+                    next_tag_var = forward_var + self.transitions[next_tag].cpu().view(1, -1)
+                else:
+                    next_tag_var = forward_var + self.transitions[next_tag]
+
                 best_tag_id = argmax(next_tag_var)
                 bptrs_t.append(best_tag_id)
                 viterbivars_t.append(next_tag_var[0][best_tag_id])
@@ -229,7 +250,8 @@ class BiLSTM_CRF(nn.Module):
             backpointers.append(bptrs_t)
 
         # Transition to STOP_TAG
-        terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]
+        terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]].cpu().view(1,-1)
+        #terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]
         best_tag_id = argmax(terminal_var)
         path_score = terminal_var[0][best_tag_id]
 
@@ -261,20 +283,19 @@ class BiLSTM_CRF(nn.Module):
 #####################################################################
 
 if __name__ == '__main__':
-        # Visualize
-        vis = Visualizer(env='main')
 
         # Run training
         EMBEDDING_DIM = 10
-        HIDDEN_DIM = 10
-
+        HIDDEN_DIM = 10 
+        RESUME = 0
+        CHECKPOINT = 80
+        
         # Make up some training data
         epoch_num = 300
         model_save_interval = 5
-        
         # Ratio of data to use
         train_ratio = 0.8
-        val_ratio = 0.5
+        val_ratio = 0.8
         
         train_data_path = '../data/CRF-input/train_CGED2016.txt'
         test_data_path = '../data/CGED-Test-2016/test_CGED2016.txt'
@@ -285,7 +306,12 @@ if __name__ == '__main__':
         #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_to_ix_path)
         experiment_num = 1
         experiment_name = str(experiment_num)+'_'+str(EMBEDDING_DIM)+'_'+str(HIDDEN_DIM)+'_'+str(train_ratio)+'/'
+        
+        # Visualize
+        vis = Visualizer(env=experiment_name)
+        
         model_dir = '../data/models/'+experiment_name
+        
         if not os.path.exists(model_dir):
             os.mkdir(model_dir)
         # Load word dict
@@ -302,21 +328,25 @@ if __name__ == '__main__':
         
         # Create model
         model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
-
-        #if torch.cuda.is_available():
-        #    model = model.cuda()
+        
+        # Model checkpoint
+        if RESUME:
+            model_name = str(CHECKPOINT)+'-model.pkl'
+            model_path = model_dir+model_name
+            model = torch.load(model_path)
+        
+        if CUDA_VALID:
+            model = model.cuda()
 
         optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
 
         # Check predictions before training
-        precheck_sent = prepare_sequence(training_data[1][0], word_to_ix)
-        precheck_tags = torch.LongTensor([tag_to_ix[t] for t in training_data[0][1]])
-
+        #precheck_sent = prepare_sequence(training_data[1][0], word_to_ix)
+        #precheck_tags = torch.LongTensor([tag_to_ix[t] for t in training_data[0][1]])
         #if torch.cuda.is_available():
         #    precheck_sent = precheck_sent.cuda()
 
         #print(model(precheck_sent))
-
         # Make sure prepare_sequence from earlier in the LSTM section is loaded
         for epoch in tqdm ( range(epoch_num) ):  # again, normally you would NOT do 300 epochs, it is toy data
             
@@ -335,9 +365,10 @@ if __name__ == '__main__':
 
                 # Step 3. Run our forward pass.
                 
-                #if torch.cuda.is_available():
-                #    sentence_in = sentence_in.cuda()
-                #    targets = targets.cuda()
+                if CUDA_VALID:
+                    sentence_in = sentence_in.cuda()
+                    targets = targets.cuda()
+                    epoch_train_loss = epoch_train_loss.cuda()
                 
                 neg_log_likelihood = model.neg_log_likelihood(sentence_in, targets)
                 epoch_train_loss += neg_log_likelihood
@@ -355,6 +386,10 @@ if __name__ == '__main__':
             for sentence, tags in tqdm(val_data):
                 sentence_in = prepare_sequence(sentence, word_to_ix)
                 targets = torch.LongTensor([tag_to_ix[t] for t in tags])
+                if CUDA_VALID:
+                    sentence_in = sentence_in.cuda()
+                    targets = targets.cuda()
+                    epoch_val_loss = epoch_val_loss.cuda()
                 neg_log_likelihood = model.neg_log_likelihood(sentence_in, targets)
                 epoch_val_loss += neg_log_likelihood
             avg_epoch_val_loss = epoch_val_loss.data[0] / sample_val_num
