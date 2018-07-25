@@ -16,6 +16,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 CUDA_VALID = 1
 
 
+
 def to_scalar(var):
     # returns a python float
     return var.view(-1).data.tolist()[0]
@@ -113,6 +114,72 @@ def get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_
         pickle.dump(word_to_ix, wordf)
     with open(tag_to_ix_path, 'wb') as tagf:
         pickle.dump(tag_to_ix, tagf)
+
+def norm(l,timesteps,encoder):
+    """ Truncate or pad the sentence and replace the rare word with <UNK> or <PAD>
+    
+    Iuput:
+        l: The sentence to be normalized(a list)
+        timesteps: The length of the output sequence
+        encoder: The dictionary converts word(pinyin) to index
+    Ouput:
+        result: The normalized sentence(a list of words)
+    
+    """    
+    result = []
+    if(len(l) >= timesteps):
+        for item in l[0:timesteps]:
+            if item in encoder:
+                result.append(item)
+            else:
+                result.append('<UNK>')
+        return result
+    else:
+        for item in l:
+            if item in encoder:
+                result.append(item)
+            else:
+                result.append('<UNK>')
+        for item in range(timesteps-len(l)):
+            result.append('<PAD>')
+        return result
+
+def batch_generator_pair_with_length(training_data, batch_size, max_timesteps, word_to_ix, tag_to_ix):
+    input_data =    [elem[0] for elem in training_data]
+    target_data =   [elem[1] for elem in training_data]
+    while True:
+        imb = np.random.randint(0, len(input_data), batch_size)
+        src_list = []
+        src_length_list = []
+        max_src_length = 0
+        tgt_list = []
+        tgt_length_list = []
+        max_tgt_length = 0
+        
+        for i in imb:
+            temp_src_length = len(input_data[i])
+            temp_append_length = max_timesteps if temp_src_length > max_timesteps else temp_src_length
+            src_length_list.append(temp_append_length)
+            
+            temp_tgt_length = len(target_data[i])
+            temp_append_length = max_timesteps if temp_tgt_length > max_timesteps else temp_tgt_length
+            tgt_length_list.append(temp_append_length)
+            
+            if max_src_length < temp_src_length:
+                max_src_length = temp_src_length
+            if max_tgt_length < temp_tgt_length:
+                max_tgt_length = temp_tgt_length
+        max_src_length = max_timesteps if max_src_length > max_timesteps else max_src_length
+        max_tgt_length = max_timesteps if max_tgt_length > max_timesteps else max_tgt_length
+        
+        for i in imb:
+            temp = [word_to_ix.get(c,0) for c in norm(input_data[i],max_src_length,word_to_ix)]# <PAD>
+            src_list.append(temp)
+            temp = [tag_to_ix.get(c,1) for c in norm(target_data[i],max_tgt_length,tag_to_ix)]# <UNK>
+            tgt_list.append(temp)
+            
+            
+        yield src_list,src_length_list,tgt_list,tgt_length_list 
 
 #####################################################################
 # Create model
@@ -319,8 +386,14 @@ if __name__ == '__main__':
         
         # Training data
         training_data = get_training_data(train_data_path)
+        
         # Get subset of training data to verify whether work or not
         training_data = training_data[:int( len(training_data) * train_ratio )]
+        
+        # Batch data
+        batch_size = 3
+        max_timesteps = 20
+        training_data = batch_generator_pair_with_length(training_data, batch_size, max_timesteps, word_to_ix, tag_to_ix)
         
         # Val data
         val_data = get_training_data(test_data_path) 
@@ -353,13 +426,19 @@ if __name__ == '__main__':
             sample_train_num = len(training_data)
             epoch_train_loss = torch.autograd.Variable( torch.FloatTensor([0.0]) )
             # Training loss            
-            for sentence, tags in tqdm (training_data):
+            for i in range(0, sample_train_num/batch_size):
+                batch_full = next(training_data)
+                src_list, src_length_list, tgt_list, tgt_length_list = batch_full
+            #for sentence, tags in tqdm (training_data):
                 # Step 1. Remember that Pytorch accumulates gradients.
                 # We need to clear them out before each instance
                 model.zero_grad()
 
                 # Step 2. Get our inputs ready for the network, that is,
                 # turn them into Variables of word indices.
+                """
+                    I need to make modification here!!!
+                """
                 sentence_in = prepare_sequence(sentence, word_to_ix)
                 targets = torch.LongTensor([tag_to_ix[t] for t in tags])
 
