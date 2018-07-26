@@ -1,3 +1,4 @@
+import argparse
 import pickle
 import torch
 from train import *
@@ -38,9 +39,18 @@ def predict_to_file(sid, predict_res, res_file_path):
             end = i + 1
 
 if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--embedding_dim')
+    parser.add_argument('--hidden_dim')
+    parser.add_argument('--checkpoint')
+    parser.add_argument('--model_dir')
+    args = parser.parse_args()
+    EMBEDDING_DIM = int( args.embedding_dim )
+    HIDDEN_DIM = int( args.hidden_dim )
+    model_checkpoint = int( args.checkpoint )
+    model_dir = args.model_dir
 
-    EMBEDDING_DIM = 5
-    HIDDEN_DIM = 4  
     word_to_ix_path = '../data/word_to_ix.pkl'
     tag_to_ix_path = '../data/tag_to_ix.pkl'
     res_file_path = '../data/CGED-Test-2016/CGED16_HSK_Test_Output_.txt'
@@ -48,8 +58,7 @@ if __name__ == '__main__':
     START_TAG = '<START>'
     STOP_TAG = '<STOP>'
 
-    model_dir = '../data/models/0_5_4_0.2/'
-    model_path = model_dir+'90-2018-07-22-02-19-20-model.pkl'
+    model_path = model_dir+str(model_checkpoint)+'-model.pkl'
     test_data_path = '../data/CGED-Test-2016/test_CGED2016.txt'
     test_data_sid_path = '../data/CGED-Test-2016/CGED16_HSK_Test_Input.txt'
 
@@ -73,20 +82,21 @@ if __name__ == '__main__':
     for sample_idx in tqdm (range(len(test_data)) ):
         
         seq_test = prepare_sequence(test_data[sample_idx][0], word_to_ix)
+        #with torch.no_grad():
         score,tag_seq = model(seq_test)
         sid = test_data_sids[sample_idx]
 
         predict = [ix_to_tag[ix] for ix in tag_seq]
         real = test_data[sample_idx][1]
 
-        # Result store
-        predict_to_file(sid, predict, res_file_path)
         
         all_real.extend(real)
         all_pred.extend(predict)
         
+        # Result store
         #print('Predict: ', predict)
         #print('Real: ', real)
+        predict_to_file(sid, predict, res_file_path)
         
 
     target_names = [key for key in tag_to_ix.keys()]

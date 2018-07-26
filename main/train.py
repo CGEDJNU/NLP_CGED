@@ -2,6 +2,7 @@ import os
 import time
 import pickle
 from tqdm import tqdm
+import argparse
 
 import torch
 import torch.autograd as autograd
@@ -13,7 +14,7 @@ torch.manual_seed(1)
 
 CUDA_VALID = torch.cuda.is_available()
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-CUDA_VALID = 1
+CUDA_VALID = 0
 
 
 
@@ -115,71 +116,6 @@ def get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_
     with open(tag_to_ix_path, 'wb') as tagf:
         pickle.dump(tag_to_ix, tagf)
 
-def norm(l,timesteps,encoder):
-    """ Truncate or pad the sentence and replace the rare word with <UNK> or <PAD>
-    
-    Iuput:
-        l: The sentence to be normalized(a list)
-        timesteps: The length of the output sequence
-        encoder: The dictionary converts word(pinyin) to index
-    Ouput:
-        result: The normalized sentence(a list of words)
-    
-    """    
-    result = []
-    if(len(l) >= timesteps):
-        for item in l[0:timesteps]:
-            if item in encoder:
-                result.append(item)
-            else:
-                result.append('<UNK>')
-        return result
-    else:
-        for item in l:
-            if item in encoder:
-                result.append(item)
-            else:
-                result.append('<UNK>')
-        for item in range(timesteps-len(l)):
-            result.append('<PAD>')
-        return result
-
-def batch_generator_pair_with_length(training_data, batch_size, max_timesteps, word_to_ix, tag_to_ix):
-    input_data =    [elem[0] for elem in training_data]
-    target_data =   [elem[1] for elem in training_data]
-    while True:
-        imb = np.random.randint(0, len(input_data), batch_size)
-        src_list = []
-        src_length_list = []
-        max_src_length = 0
-        tgt_list = []
-        tgt_length_list = []
-        max_tgt_length = 0
-        
-        for i in imb:
-            temp_src_length = len(input_data[i])
-            temp_append_length = max_timesteps if temp_src_length > max_timesteps else temp_src_length
-            src_length_list.append(temp_append_length)
-            
-            temp_tgt_length = len(target_data[i])
-            temp_append_length = max_timesteps if temp_tgt_length > max_timesteps else temp_tgt_length
-            tgt_length_list.append(temp_append_length)
-            
-            if max_src_length < temp_src_length:
-                max_src_length = temp_src_length
-            if max_tgt_length < temp_tgt_length:
-                max_tgt_length = temp_tgt_length
-        max_src_length = max_timesteps if max_src_length > max_timesteps else max_src_length
-        max_tgt_length = max_timesteps if max_tgt_length > max_timesteps else max_tgt_length
-        
-        for i in imb:
-            temp = [word_to_ix.get(c,0) for c in norm(input_data[i],max_src_length,word_to_ix)]# <PAD>
-            src_list.append(temp)
-            temp = [tag_to_ix.get(c,1) for c in norm(target_data[i],max_tgt_length,tag_to_ix)]# <UNK>
-            tgt_list.append(temp)
-            
-            
-        yield src_list,src_length_list,tgt_list,tgt_length_list 
 
 #####################################################################
 # Create model
@@ -350,20 +286,26 @@ class BiLSTM_CRF(nn.Module):
 #####################################################################
 
 if __name__ == '__main__':
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--experiment_num')
+        parser.add_argument('--embedding_dim')
+        parser.add_argument('--hidden_dim')
+        parser.add_argument('--train_ratio')
+        args = parser.parse_args()
 
+        experiment_num  =   int(args.experiment_num)
         # Run training
-        EMBEDDING_DIM = 10
-        HIDDEN_DIM = 10 
-        RESUME = 0
-        CHECKPOINT = 80
+        EMBEDDING_DIM   =   int(args.embedding_dim)
+        HIDDEN_DIM      =   int(args.hidden_dim)
+        RESUME          =   0
+        CHECKPOINT      =   80
         
         # Make up some training data
         epoch_num = 300
         model_save_interval = 5
         # Ratio of data to use
-        train_ratio = 0.8
-        val_ratio = 0.8
-        
+        train_ratio = float(args.train_ratio)
+        val_ratio = 0.3
         train_data_path = '../data/CRF-input/train_CGED2016.txt'
         test_data_path = '../data/CGED-Test-2016/test_CGED2016.txt'
         
@@ -371,7 +313,6 @@ if __name__ == '__main__':
         tag_to_ix_path = '../data/tag_to_ix.pkl'
         
         #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_to_ix_path)
-        experiment_num = 1
         experiment_name = str(experiment_num)+'_'+str(EMBEDDING_DIM)+'_'+str(HIDDEN_DIM)+'_'+str(train_ratio)+'/'
         
         # Visualize
@@ -389,11 +330,6 @@ if __name__ == '__main__':
         
         # Get subset of training data to verify whether work or not
         training_data = training_data[:int( len(training_data) * train_ratio )]
-        
-        # Batch data
-        batch_size = 3
-        max_timesteps = 20
-        training_data = batch_generator_pair_with_length(training_data, batch_size, max_timesteps, word_to_ix, tag_to_ix)
         
         # Val data
         val_data = get_training_data(test_data_path) 
@@ -426,10 +362,7 @@ if __name__ == '__main__':
             sample_train_num = len(training_data)
             epoch_train_loss = torch.autograd.Variable( torch.FloatTensor([0.0]) )
             # Training loss            
-            for i in range(0, sample_train_num/batch_size):
-                batch_full = next(training_data)
-                src_list, src_length_list, tgt_list, tgt_length_list = batch_full
-            #for sentence, tags in tqdm (training_data):
+            for sentence, tags in tqdm (training_data):
                 # Step 1. Remember that Pytorch accumulates gradients.
                 # We need to clear them out before each instance
                 model.zero_grad()
