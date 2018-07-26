@@ -312,7 +312,7 @@ if __name__ == '__main__':
         word_to_ix_path = '../data/word_to_ix.pkl'
         tag_to_ix_path = '../data/tag_to_ix.pkl'
         
-        #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_to_ix_path)
+        get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, tag_to_ix_path)
         experiment_name = str(experiment_num)+'_'+str(EMBEDDING_DIM)+'_'+str(HIDDEN_DIM)+'_'+str(train_ratio)+'/'
         
         # Visualize
