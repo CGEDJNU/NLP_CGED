@@ -65,6 +65,9 @@ if __name__ == '__main__':
 
     test_data = get_training_data(test_data_path)
     test_data_sids = get_test_data_sids(test_data_sid_path)
+    
+    train_data_path = '../data/CRF-input/train_CGED2016.txt'
+    train_data = get_training_data(train_data_path)
 
     word_to_ix, tag_to_ix = load_word_tag_ix(word_to_ix_path, tag_to_ix_path)
 
@@ -79,10 +82,12 @@ if __name__ == '__main__':
     all_real = []
     all_pred = []
     
+    """
+        debug version.
+    """
     for sample_idx in tqdm (range(len(test_data)) ):
         
         seq_test = prepare_sequence(test_data[sample_idx][0], word_to_ix)
-        #with torch.no_grad():
         score,tag_seq = model(seq_test)
         sid = test_data_sids[sample_idx]
 
@@ -92,10 +97,9 @@ if __name__ == '__main__':
         
         all_real.extend(real)
         all_pred.extend(predict)
-        
         # Result store
-        #print('Predict: ', predict)
-        #print('Real: ', real)
+        print('Predict: ', predict)
+        print('Real: ', real)
         predict_to_file(sid, predict, res_file_path)
         
 
