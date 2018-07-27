@@ -17,7 +17,6 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 CUDA_VALID = 0
 
 
-
 def to_scalar(var):
     # returns a python float
     return var.view(-1).data.tolist()[0]
@@ -330,7 +329,7 @@ if __name__ == '__main__':
         
         # Get subset of training data to verify whether work or not
         training_data = training_data[:int( len(training_data) * train_ratio )]
-        
+
         # Val data
         val_data = get_training_data(test_data_path) 
         val_data = val_data[:int( len(val_data) * val_ratio )]
